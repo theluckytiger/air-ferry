@@ -10,13 +10,16 @@ from typing import Any
 
 CHUNK_SIZE = 64 * 1024
 SERVICE_TYPE = "_air-ferry._tcp.local."
-DEFAULT_PORT = 8765
+DEFAULT_PORT = 8000
 
 _UNSAFE_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
+def default_download_dir() -> Path:
+    return Path.home() / "Downloads" / "air-ferry"
+
+
 def safe_filename(name: str) -> str:
-    """Return a basename that cannot escape the destination directory."""
     cleaned = Path(name).name.strip().strip(".")
     cleaned = _UNSAFE_NAME.sub("_", cleaned)
     if not cleaned or cleaned in {".", ".."}:
@@ -61,13 +64,10 @@ def format_bytes(n: float) -> str:
 
 
 def unique_destination(directory: Path, filename: str) -> Path:
-    """Pick a non-colliding path under directory for filename."""
     target = directory / filename
     if not target.exists():
         return target
-
-    stem = target.stem
-    suffix = target.suffix
+    stem, suffix = target.stem, target.suffix
     index = 1
     while True:
         candidate = directory / f"{stem}_{index}{suffix}"

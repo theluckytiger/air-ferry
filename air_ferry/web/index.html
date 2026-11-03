@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#c5ddd4" />
+  <title>air-ferry</title>
+  <style>
+    html { color-scheme: light only; background: #c5ddd4; }
+    body { margin: 0; background: #c5ddd4; color: #10231f; }
+  </style>
+  <link rel="stylesheet" href="/static/styles.css?v=__ASSET_V__" />
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true">
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+    <div class="grid"></div>
+  </div>
+
+  <main class="shell">
+    <header class="brand-block">
+      <p class="eyebrow">file sharing</p>
+      <h1 class="brand">air-ferry</h1>
+      <p class="lede" id="status-line">Connecting...</p>
+      <p class="presence" id="presence-line">Waiting for devices...</p>
+    </header>
+
+    <section class="connect-panel glass" aria-label="Phone access">
+      <div class="connect-copy">
+        <h2>Join from your phone</h2>
+        <p id="connect-blurb">Same Wi-Fi. Scan the QR. If the page doesn't load, open a tunnel.</p>
+        <p class="share-url"><a id="share-url" href="#"></a></p>
+        <p id="firewall-note" class="firewall-note" hidden></p>
+        <button type="button" id="tunnel-btn" class="secondary-btn">Page doesn't load? Open a tunnel</button>
+      </div>
+      <figure class="qr-wrap">
+        <img id="qr-image" class="qr-image" src="/api/qr.svg" width="180" height="180" alt="QR code for this air-ferry URL" />
+        <figcaption>Scan with your camera</figcaption>
+      </figure>
+    </section>
+
+    <section class="stage" aria-label="Share a file">
+      <div
+        id="dropzone"
+        class="dropzone"
+        tabindex="0"
+        role="button"
+        aria-label="Select or drop a file to share"
+      >
+        <div class="dropzone-pulse" aria-hidden="true"></div>
+        <div class="dropzone-core">
+          <span class="dropzone-mark" aria-hidden="true"></span>
+          <strong id="drop-title">Drop a file anywhere</strong>
+          <span id="drop-sub">or click to select. Everyone in this room can download it.</span>
+        </div>
+        <input id="file-input" type="file" hidden />
+      </div>
+      <button type="button" id="select-btn" class="primary-btn">Select File</button>
+    </section>
+
+    <section class="files-section" aria-label="Shared files">
+      <div class="section-head">
+        <h2>In this room</h2>
+        <span id="file-count" class="muted">0 files</span>
+      </div>
+      <div id="file-list" class="file-list">
+        <div class="peer-empty" id="files-empty">Nothing shared yet. Drop a file on this PC or tap Select File on your phone.</div>
+      </div>
+    </section>
+
+    <section class="transfers-section" aria-label="Uploads" hidden id="transfers-section">
+      <div class="section-head">
+        <h2>Uploading</h2>
+      </div>
+      <div id="transfer-list" class="transfer-list"></div>
+    </section>
+
+    <footer class="foot">
+      <span id="foot-url"></span>
+      <span class="dot" aria-hidden="true"></span>
+      <span id="foot-version"></span>
+    </footer>
+  </main>
+
+  <script src="/static/app.js?v=__ASSET_V__"></script>
+</body>
+</html>

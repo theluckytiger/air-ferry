@@ -16,3 +16,5 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+_*.ps1
+CODE_DUMP*.md

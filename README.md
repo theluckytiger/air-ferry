@@ -1,6 +1,8 @@
 # air-ferry
 
-Direct LAN file transfer over WebSockets. Devices find each other with mDNS — no cloud relay, no manual IPs.
+Share files between your PC and phone. Web UI, system tray, WebSockets, Local network by default, optional cloudflare tunnel for when the router blocks device to device traffic.
+
+Stack: Python 3.10+, FastAPI, uvicorn, websockets, zeroconf, rich, typer, pystray
 
 ## Install
 
@@ -8,29 +10,21 @@ Direct LAN file transfer over WebSockets. Devices find each other with mDNS — 
 pip install -e .
 ```
 
-## Usage
-
-On the receiving machine:
+## Run
 
 ```bash
-air-ferry listen
+air-ferry
 ```
 
-On the sending machine:
+1. Approve UAC once if asked (firewall allow rules for phones)
+2. Browser UI opens; the app stays in the tray
+3. Scan the QR on your phone (same Wi-Fi)
+4. If the page does not load, click **Open a tunnel** (QR switches). Click **Close tunnel** when done
+5. Drop or select a file on either side, then download on the other
 
-```bash
-air-ferry send ./report.pdf
-```
+Tray: open UI, copy link, open/close tunnel, quit. Quitting always stops the tunnel.
 
-## How it works
-
-1. `listen` opens a WebSocket server and advertises `_air-ferry._tcp.local.` on the LAN.
-2. `send` discovers receivers via mDNS, streams the file in 64KB chunks, and verifies a SHA-256 checksum at the end.
-
-## Requirements
-
-- Python 3.10+
-- Same local network (multicast/mDNS must be allowed)
+Optional terminal mode: `air-ferry-tui`
 
 ## License
 
