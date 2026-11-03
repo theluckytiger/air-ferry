@@ -86,7 +86,14 @@ def tui_main(
         webbrowser.open(f"http://127.0.0.1:{port}")
 
     try:
-        uvicorn.run(app, host=host, port=port, log_level="warning", lifespan="on")
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            log_level="warning",
+            lifespan="on",
+            log_config=None,
+        )
     except KeyboardInterrupt:
         console.print("\n[dim]stopped[/]")
     finally:

@@ -210,6 +210,8 @@ def run(
         log_level="warning",
         lifespan="on",
         access_log=False,
+        # PyInstaller/frozen: uvicorn's default dictConfig formatters fail to load.
+        log_config=None,
     )
     server = uvicorn.Server(config)
 
