@@ -204,17 +204,22 @@ class Hub:
         self._peer_task = asyncio.create_task(self._presence_loop())
 
     async def stop(self) -> None:
+        # Tunnel first so quit / crash paths never leave cloudflared running.
+        tunnel = self._tunnel
+        self._tunnel = None
+        self.tunnel_url = None
+        if tunnel is not None:
+            try:
+                await asyncio.to_thread(tunnel.stop)
+            except Exception:
+                pass
         if self._peer_task is not None:
             self._peer_task.cancel()
             try:
                 await self._peer_task
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, RuntimeError):
                 pass
             self._peer_task = None
-        if self._tunnel is not None:
-            await asyncio.to_thread(self._tunnel.stop)
-            self._tunnel = None
-            self.tunnel_url = None
         if self.enable_mdns:
             await asyncio.to_thread(self.watcher.stop)
             await asyncio.to_thread(self.advertiser.stop)

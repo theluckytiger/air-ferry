@@ -52,7 +52,7 @@
     const iPadDesktop = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
     if (/iPhone|iPad|iPod|Android/i.test(ua) || iPadDesktop) return "Phone";
     if (/Macintosh/i.test(ua)) return "Mac";
-    if (/Windows/i.test(ua)) return "PC";
+    if (/Windows/i.test(ua) || /Linux/i.test(ua)) return "PC";
     if (isTouch) return "Phone";
     return "Device";
   }
@@ -219,7 +219,8 @@
     const fw = state.info.firewall || {};
     if (fw.ok === false) {
       els.firewallNote.hidden = false;
-      els.firewallNote.textContent = fw.detail || "Firewall blocked phones. Approve UAC.";
+      els.firewallNote.textContent =
+        fw.detail || "Firewall blocked phones. Allow the port or open a tunnel.";
     } else {
       els.firewallNote.hidden = true;
     }

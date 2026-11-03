@@ -17,7 +17,7 @@ from rich.text import Text
 
 from air_ferry import __version__
 from air_ferry.launcher import main as gui_main
-from air_ferry.netutil import lan_ips, lan_urls, local_ip, prepare_windows_firewall
+from air_ferry.netutil import lan_ips, lan_urls, local_ip, prepare_firewall
 from air_ferry.server import create_app
 from air_ferry.utils import DEFAULT_PORT, default_download_dir
 
@@ -57,7 +57,7 @@ def tui_main(
     if ctx.invoked_subcommand is not None:
         return
 
-    firewall = prepare_windows_firewall(port, allow_elevate=True)
+    firewall = prepare_firewall(port, allow_elevate=True)
     instance = name or f"air-ferry-{socket.gethostname()}"
     dest_dir = (dest or default_download_dir()).expanduser().resolve()
     lan_ip = local_ip()
@@ -89,6 +89,18 @@ def tui_main(
         uvicorn.run(app, host=host, port=port, log_level="warning", lifespan="on")
     except KeyboardInterrupt:
         console.print("\n[dim]stopped[/]")
+    finally:
+        # Lifespan normally stops the tunnel; belt-and-suspenders for Ctrl+C / crashes.
+        hub = getattr(app.state, "hub", None)
+        tunnel = getattr(hub, "_tunnel", None) if hub is not None else None
+        if hub is not None:
+            hub._tunnel = None
+            hub.tunnel_url = None
+        if tunnel is not None:
+            try:
+                tunnel.stop()
+            except Exception:
+                pass
 
 
 @tui_app.command("version")

@@ -8,7 +8,18 @@ Stack: Python 3.10+, FastAPI, uvicorn, websockets, zeroconf, rich, typer, pystra
 
 ## Install
 
-**Linux** (Python 3.10+). Install and run:
+**Linux** (Python 3.10+). Tray deps once, then install and run:
+
+```bash
+# Fedora
+sudo dnf install python3-gobject libappindicator-gtk3 wl-clipboard
+
+# Debian / Ubuntu
+sudo apt install python3-gi gir1.2-ayatanaappindicator3-0.1 wl-clipboard
+
+# Arch
+sudo pacman -S python-gobject libappindicator-gtk3 wl-clipboard
+```
 
 ```bash
 python3 -m pip install --user "git+https://github.com/theluckytiger/air-ferry.git" && air-ferry
@@ -18,15 +29,15 @@ python3 -m pip install --user "git+https://github.com/theluckytiger/air-ferry.gi
 
 ## Use
 
-1. On Windows, approve UAC once if asked (firewall allow rules for phones)
+1. Approve a firewall prompt if asked (Windows UAC / Linux polkit) so phones can reach the PC
 2. Browser UI opens; the app stays in the tray
 3. Scan the QR on your phone (same Wi-Fi)
-4. If the page does not load, click **Open a tunnel** (QR switches). Click **Close tunnel** when done
+4. If the page does not load, click **Open a tunnel** (QR switches)
 5. Drop or select a file on either side, then download on the other
 
 Tray: open UI, copy link, open/close tunnel, quit. Quitting always stops the tunnel.
 
-Optional terminal mode (Linux / from source): `air-ferry-tui`
+Optional terminal mode: `air-ferry-tui`
 
 ## License
 

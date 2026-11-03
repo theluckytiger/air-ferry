@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import asyncio
 import json
+import shutil
 import socket
+import subprocess
 import sys
 import threading
 import traceback
@@ -14,9 +17,9 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-from air_ferry.utils import DEFAULT_PORT, default_download_dir
+from air_ferry.utils import DEFAULT_PORT, app_state_dir, default_download_dir
 
-LOG_PATH = Path.home() / "AppData" / "Local" / "air-ferry" / "air-ferry.log"
+LOG_PATH = app_state_dir() / "air-ferry.log"
 
 
 def _log(msg: str) -> None:
@@ -84,35 +87,86 @@ def _tray_image():
 
 
 def _copy_text(text: str) -> None:
-    if sys.platform != "win32":
-        return
-    try:
-        import ctypes
+    if sys.platform == "win32":
+        try:
+            import ctypes
 
-        user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
-        user32.OpenClipboard(0)
-        user32.EmptyClipboard()
-        data = text.encode("utf-16-le") + b"\x00\x00"
-        handle = kernel32.GlobalAlloc(0x0042, len(data))
-        ptr = kernel32.GlobalLock(handle)
-        ctypes.memmove(ptr, data, len(data))
-        kernel32.GlobalUnlock(handle)
-        user32.SetClipboardData(13, handle)
-        user32.CloseClipboard()
+            user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+            user32.OpenClipboard(0)
+            user32.EmptyClipboard()
+            data = text.encode("utf-16-le") + b"\x00\x00"
+            handle = kernel32.GlobalAlloc(0x0042, len(data))
+            ptr = kernel32.GlobalLock(handle)
+            ctypes.memmove(ptr, data, len(data))
+            kernel32.GlobalUnlock(handle)
+            user32.SetClipboardData(13, handle)
+            user32.CloseClipboard()
+        except Exception as exc:
+            _log(f"clipboard failed: {exc}")
+        return
+
+    # Linux / macOS: prefer Wayland, then X11 helpers, then pbcopy
+    try:
+        if shutil.which("wl-copy"):
+            subprocess.run(
+                ["wl-copy"],
+                check=False,
+                timeout=5,
+                input=text,
+                text=True,
+            )
+            return
+        if shutil.which("xclip"):
+            subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                check=False,
+                timeout=5,
+                input=text,
+                text=True,
+            )
+            return
+        if shutil.which("xsel"):
+            subprocess.run(
+                ["xsel", "--clipboard", "--input"],
+                check=False,
+                timeout=5,
+                input=text,
+                text=True,
+            )
+            return
+        if sys.platform == "darwin" and shutil.which("pbcopy"):
+            subprocess.run(
+                ["pbcopy"],
+                check=False,
+                timeout=5,
+                input=text,
+                text=True,
+            )
+            return
+        _log("clipboard: no wl-copy/xclip/xsel/pbcopy found")
     except Exception as exc:
         _log(f"clipboard failed: {exc}")
 
 
 def _show_fatal(message: str) -> None:
-    if sys.platform != "win32":
-        print(message)
-        return
-    try:
-        import ctypes
+    if sys.platform == "win32":
+        try:
+            import ctypes
 
-        ctypes.windll.user32.MessageBoxW(0, message, "air-ferry", 0x10)
-    except Exception:
-        pass
+            ctypes.windll.user32.MessageBoxW(0, message, "air-ferry", 0x10)
+            return
+        except Exception:
+            pass
+    print(message, file=sys.stderr)
+    if sys.platform.startswith("linux") and shutil.which("notify-send"):
+        try:
+            subprocess.run(
+                ["notify-send", "-u", "critical", "air-ferry", message[:200]],
+                check=False,
+                timeout=5,
+            )
+        except Exception:
+            pass
 
 
 def run(
@@ -126,13 +180,13 @@ def run(
     import uvicorn
     from pystray import Icon, Menu, MenuItem
 
-    from air_ferry.netutil import lan_ips, lan_urls, local_ip, prepare_windows_firewall
+    from air_ferry.netutil import lan_ips, lan_urls, local_ip, prepare_firewall
     from air_ferry.server import create_app
 
-    _log(f"--- start exe={sys.executable!r}")
+    _log(f"--- start exe={sys.executable!r} platform={sys.platform!r}")
 
     chosen = _pick_port(port)
-    firewall = prepare_windows_firewall(chosen, allow_elevate=True)
+    firewall = prepare_firewall(chosen, allow_elevate=True)
     _log(f"firewall: {firewall}")
 
     instance = name or f"air-ferry-{socket.gethostname()}"
@@ -229,6 +283,8 @@ def run(
             except Exception as exc:
                 _log(f"tunnel stop failed: {exc}")
 
+    atexit.register(_stop_tunnel_now)
+
     def quit_app(icon=None, item=None) -> None:
         _stop_tunnel_now()
         server.should_exit = True
@@ -243,9 +299,11 @@ def run(
     )
     icon = Icon("air-ferry", _tray_image(), f"air-ferry - {share_url}", menu)
     state["icon"] = icon
-    icon.run()
-    _stop_tunnel_now()
-    server.should_exit = True
+    try:
+        icon.run()
+    finally:
+        _stop_tunnel_now()
+        server.should_exit = True
 
 
 def main(argv: list[str] | None = None) -> None:

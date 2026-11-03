@@ -1,9 +1,10 @@
-"""LAN IPs + Windows firewall / Private network profile."""
+"""LAN IPs + OS firewall helpers (Windows UAC / Linux firewalld|ufw)."""
 
 from __future__ import annotations
 
 import base64
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -15,14 +16,15 @@ _ips_cache: tuple[float, list[str]] | None = None
 
 
 def _run(args: list[str], *, timeout: float | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        args,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=timeout,
-        creationflags=_CREATE_NO_WINDOW,
-    )
+    kwargs: dict = {
+        "capture_output": True,
+        "text": True,
+        "check": False,
+        "timeout": timeout,
+    }
+    if sys.platform == "win32":
+        kwargs["creationflags"] = _CREATE_NO_WINDOW
+    return subprocess.run(args, **kwargs)
 
 
 def _usable(ip: str) -> bool:
@@ -73,6 +75,26 @@ def _adapter_ips() -> list[str]:
             )
             for line in (r.stdout or "").splitlines():
                 add(line.strip())
+        except Exception:
+            pass
+    elif sys.platform.startswith("linux"):
+        # Prefer `ip` (covers USB tether / hotspot ifaces Windows Get-NetIPAddress finds).
+        try:
+            if shutil.which("ip"):
+                r = _run(["ip", "-4", "-o", "addr", "show", "scope", "global"], timeout=3)
+                for line in (r.stdout or "").splitlines():
+                    parts = line.split()
+                    if "inet" in parts:
+                        idx = parts.index("inet")
+                        if idx + 1 < len(parts):
+                            add(parts[idx + 1].split("/")[0])
+        except Exception:
+            pass
+        try:
+            r = _run(["hostname", "-I"], timeout=2)
+            for token in (r.stdout or "").split():
+                if "." in token:
+                    add(token)
         except Exception:
             pass
 
@@ -197,7 +219,94 @@ def ensure_windows_lan_access(port: int) -> dict[str, str | bool]:
     return {"ok": False, "detail": "firewall NOT set: approve UAC, then retry"}
 
 
-def prepare_windows_firewall(port: int, *, allow_elevate: bool = True) -> dict[str, str | bool]:
+def _firewalld_yes(args: list[str]) -> bool:
+    r = _run(args, timeout=5)
+    return r.returncode == 0 and (r.stdout or "").strip().lower() == "yes"
+
+
+def _firewalld_port_open(port: int) -> bool:
+    """Runtime open is what phones need; permanent alone is not enough until reload."""
+    return _firewalld_yes(["firewall-cmd", f"--query-port={port}/tcp"])
+
+
+def _firewalld_open_port(port: int) -> subprocess.CompletedProcess[str]:
+    """Persist like Windows rules: permanent + reload (also applies runtime)."""
+    script = (
+        f"firewall-cmd --permanent --add-port={port}/tcp >/dev/null && "
+        f"firewall-cmd --reload >/dev/null"
+    )
+    return _run(["bash", "-c", script], timeout=30)
+
+
+def ensure_linux_lan_access(port: int) -> dict[str, str | bool]:
+    """
+    Open TCP port for LAN phones via firewalld (Fedora/RHEL/Arch) or ufw (Debian/Ubuntu).
+    Uses pkexec when elevation is needed; never fails hard — tunnel still works.
+    """
+    if not sys.platform.startswith("linux"):
+        return {"ok": True, "detail": "non-Linux"}
+
+    # firewalld
+    if shutil.which("firewall-cmd"):
+        try:
+            if _firewalld_port_open(port):
+                return {"ok": True, "detail": "firewall OK"}
+            r = _firewalld_open_port(port)
+            if r.returncode != 0 and shutil.which("pkexec"):
+                script = (
+                    f"firewall-cmd --permanent --add-port={port}/tcp >/dev/null && "
+                    f"firewall-cmd --reload >/dev/null"
+                )
+                r = _run(["pkexec", "bash", "-c", script], timeout=120)
+            if r.returncode == 0 and _firewalld_port_open(port):
+                return {"ok": True, "detail": "firewall OK"}
+            return {
+                "ok": False,
+                "detail": (
+                    f"firewall NOT set: run "
+                    f"`sudo firewall-cmd --permanent --add-port={port}/tcp && "
+                    f"sudo firewall-cmd --reload` (or use Open a tunnel)"
+                ),
+            }
+        except Exception as exc:
+            return {"ok": False, "detail": f"firewalld error: {exc}"}
+
+    # ufw (rules persist by default)
+    if shutil.which("ufw"):
+        try:
+            status = _run(["ufw", "status"], timeout=5)
+            out = (status.stdout or "").lower()
+            if "inactive" in out:
+                return {"ok": True, "detail": "ufw inactive"}
+            if f"{port}/tcp" in out and "allow" in out:
+                return {"ok": True, "detail": "firewall OK"}
+            cmd = ["ufw", "allow", f"{port}/tcp", "comment", "air-ferry"]
+            r = _run(cmd, timeout=15)
+            if r.returncode != 0 and shutil.which("pkexec"):
+                r = _run(["pkexec"] + cmd, timeout=120)
+            if r.returncode == 0:
+                return {"ok": True, "detail": "firewall OK"}
+            return {
+                "ok": False,
+                "detail": f"firewall NOT set: run `sudo ufw allow {port}/tcp`",
+            }
+        except Exception as exc:
+            return {"ok": False, "detail": f"ufw error: {exc}"}
+
+    # Arch etc. often have no host firewall — LAN works without a helper.
+    return {"ok": True, "detail": "no firewalld/ufw detected"}
+
+
+def prepare_firewall(port: int, *, allow_elevate: bool = True) -> dict[str, str | bool]:
     if not allow_elevate:
         return {"ok": True, "detail": "skipped"}
-    return ensure_windows_lan_access(port)
+    if sys.platform == "win32":
+        return ensure_windows_lan_access(port)
+    if sys.platform.startswith("linux"):
+        return ensure_linux_lan_access(port)
+    return {"ok": True, "detail": f"{sys.platform}: no firewall helper"}
+
+
+# Back-compat alias used by older call sites / docs
+def prepare_windows_firewall(port: int, *, allow_elevate: bool = True) -> dict[str, str | bool]:
+    return prepare_firewall(port, allow_elevate=allow_elevate)
