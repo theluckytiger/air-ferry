@@ -64,10 +64,40 @@ class WebAppTests(unittest.TestCase):
                     self.assertEqual(wait(a, "accept")["id"], fid)
                     a.send_bytes(payload)
                     a.send_json({"type": "done", "id": fid})
-                    self.assertEqual(wait(a, "complete")["filename"], "n.bin")
+                    done = wait(a, "complete")
+                    self.assertEqual(done["filename"], "n.bin")
+                    self.assertTrue(done.get("persisted", True))
+                    self.assertTrue(done.get("saved_path"))
                     file_evt = wait(b, "file")
+                    saved = Path(file_evt["file"]["saved_path"])
+                    self.assertTrue(saved.is_file())
+                    self.assertEqual(saved.read_bytes(), payload)
                     dl = client.get(file_evt["file"]["download_url"])
                     self.assertEqual(dl.content, payload)
+
+                    # Host-style share: persist=false stays out of dest_dir.
+                    fid2 = "f-eph"
+                    payload2 = b"y" * 100
+                    a.send_json(
+                        {
+                            "type": "share",
+                            "id": fid2,
+                            "filename": "e.bin",
+                            "size": len(payload2),
+                            "persist": False,
+                        }
+                    )
+                    self.assertEqual(wait(a, "accept")["id"], fid2)
+                    a.send_bytes(payload2)
+                    a.send_json({"type": "done", "id": fid2})
+                    eph = wait(a, "complete")
+                    self.assertFalse(eph.get("persisted"))
+                    self.assertEqual(eph.get("saved_path"), "")
+                    self.assertFalse((Path(tmp) / "e.bin").exists())
+                    self.assertEqual(
+                        client.get(eph["download_url"]).content,
+                        payload2,
+                    )
 
 
 if __name__ == "__main__":

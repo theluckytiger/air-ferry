@@ -323,10 +323,33 @@ body {
   font-size: 0.88rem;
   padding: 0.55rem 0.9rem;
   border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .download-btn:hover {
   background: var(--accent);
+}
+
+.saved-btn {
+  flex: 0 0 auto;
+  color: #0d3d34;
+  background: rgba(15, 143, 120, 0.18);
+  font-weight: 700;
+  font-size: 0.88rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 10px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.saved-path {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: #3a5c54;
+  word-break: break-all;
 }
 
 @keyframes flash-in {

@@ -33,7 +33,7 @@ python3 -m pip install --user "git+https://github.com/theluckytiger/air-ferry.gi
 2. Browser UI opens; the app stays in the tray
 3. Scan the QR on your phone (same Wi-Fi)
 4. If the page does not load, click **Open a tunnel** (QR switches)
-5. Drop or select a file on either side, then download on the other
+5. Drop or select a file on either side
 
 Tray: open UI, copy link, open/close tunnel, quit. Quitting always stops the tunnel.
 

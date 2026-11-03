@@ -25,6 +25,11 @@
     qrImage: document.getElementById("qr-image"),
   };
 
+  const isHost =
+    location.hostname === "127.0.0.1" ||
+    location.hostname === "localhost" ||
+    location.hostname === "[::1]";
+
   const state = {
     ws: null,
     clientId: null,
@@ -160,7 +165,11 @@
         break;
       case "file":
         if (msg.file) {
-          state.files.set(msg.file.id, msg.file);
+          state.files.set(msg.file.id, {
+            ...msg.file,
+            persisted: msg.file.persisted !== false,
+            saved_path: msg.file.saved_path || "",
+          });
           renderFiles();
           if (msg.file.from_id !== state.clientId) {
             setStatus(`${msg.file.from_label} shared ${msg.file.filename}`);
@@ -179,6 +188,8 @@
             from_label: msg.from_label || state.label,
             download_url: msg.download_url || `/api/files/${msg.id}`,
             size_label: msg.size_label || fmtBytes(msg.size),
+            saved_path: msg.saved_path || "",
+            persisted: msg.persisted !== false,
           });
           renderFiles();
         }
@@ -274,16 +285,31 @@
         '<div class="peer-empty">Nothing shared yet. Drop a file on this PC or tap Select File on your phone.</div>';
       return;
     }
+    const destHint = (state.info && state.info.dest) || "";
     els.fileList.innerHTML = items
       .map((f) => {
         const mine = f.from_id === state.clientId;
+        const kept = f.persisted !== false && Boolean(f.saved_path || destHint);
+        const saved = f.saved_path || (kept && destHint ? `${destHint}/${f.filename}` : "");
+        let action;
+        let where = "";
+        if (!isHost) {
+          action = `<a class="download-btn" href="${escapeAttr(f.download_url || `/api/files/${f.id}`)}" download="${escapeAttr(f.filename)}">Download</a>`;
+        } else if (mine || !kept) {
+          // Host shared this file — original stays where it was; no Downloads copy.
+          action = `<span class="saved-btn">Shared</span>`;
+        } else {
+          action = `<span class="saved-btn" title="${escapeAttr(saved)}">Downloaded</span>`;
+          where = `<span class="saved-path" title="${escapeAttr(saved)}">${escapeHtml(saved)}</span>`;
+        }
         return `
           <article class="file-row glass" data-id="${escapeAttr(f.id)}">
             <div class="file-meta">
               <strong>${escapeHtml(f.filename)}</strong>
               <span>${escapeHtml(f.size_label || fmtBytes(f.size))} from ${escapeHtml(f.from_label || "device")}${mine ? " (you)" : ""}</span>
+              ${where}
             </div>
-            <a class="download-btn" href="${escapeAttr(f.download_url || `/api/files/${f.id}`)}" download="${escapeAttr(f.filename)}">Download</a>
+            ${action}
           </article>
         `;
       })
@@ -390,7 +416,16 @@
       (m) => (m.type === "complete" || m.type === "error") && m.id === id
     );
 
-    state.ws.send(JSON.stringify({ type: "share", id, filename: file.name, size: file.size }));
+    state.ws.send(
+      JSON.stringify({
+        type: "share",
+        id,
+        filename: file.name,
+        size: file.size,
+        // Host UI: don't copy into Downloads/air-ferry; phone keeps a real save there.
+        persist: !isHost,
+      })
+    );
 
     try {
       await acceptWait;

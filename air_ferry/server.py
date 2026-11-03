@@ -48,6 +48,19 @@ class RoomClient:
     ws: WebSocket
 
 
+def _ephemeral_dir() -> Path:
+    root = Path(tempfile.gettempdir()) / "air-ferry-ephemeral"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _unlink_quiet(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 @dataclass
 class SharedFile:
     id: str
@@ -57,6 +70,7 @@ class SharedFile:
     path: Path
     from_id: str
     from_label: str
+    persisted: bool = True
     created: float = field(default_factory=time.time)
 
     def as_dict(self) -> dict[str, Any]:
@@ -70,6 +84,9 @@ class SharedFile:
             "created": self.created,
             "download_url": f"/api/files/{self.id}",
             "size_label": format_bytes(self.size),
+            "persisted": self.persisted,
+            # Only for phone→PC keeps in Downloads/air-ferry (host uploads stay ephemeral).
+            "saved_path": str(self.path.resolve()) if self.persisted else "",
         }
 
 
@@ -182,7 +199,9 @@ class Hub:
         self._file_order.append(shared.id)
         while len(self._file_order) > MAX_SHARED:
             old_id = self._file_order.pop(0)
-            self.files.pop(old_id, None)
+            old = self.files.pop(old_id, None)
+            if old is not None and not old.persisted:
+                _unlink_quiet(old.path)
 
     async def _presence_loop(self) -> None:
         last_host: str | None = None
@@ -213,6 +232,11 @@ class Hub:
                 await asyncio.to_thread(tunnel.stop)
             except Exception:
                 pass
+        for shared in list(self.files.values()):
+            if not shared.persisted:
+                _unlink_quiet(shared.path)
+        self.files.clear()
+        self._file_order.clear()
         if self._peer_task is not None:
             self._peer_task.cancel()
             try:
@@ -363,11 +387,15 @@ async def _handle_share(hub: Hub, client: RoomClient, meta: dict) -> None:
         await hub.send(websocket, {"type": "error", "reason": "negative size"})
         return
 
+    # Host PC shares: keep only an ephemeral copy for peers (do not clutter Downloads).
+    # Phone / remote shares: persist under Downloads/air-ferry.
+    persist = bool(meta.get("persist", True))
     transfer_id = str(meta.get("id") or uuid.uuid4().hex)
     t0 = time.perf_counter()
     digest = hashlib.sha256()
     received = 0
-    hub.dest_dir.mkdir(parents=True, exist_ok=True)
+    staging = hub.dest_dir if persist else _ephemeral_dir()
+    staging.mkdir(parents=True, exist_ok=True)
     tmp_path: Path | None = None
 
     await hub.send(websocket, {"type": "accept", "id": transfer_id, "filename": filename})
@@ -386,7 +414,7 @@ async def _handle_share(hub: Hub, client: RoomClient, meta: dict) -> None:
 
     try:
         with tempfile.NamedTemporaryFile(
-            dir=hub.dest_dir,
+            dir=staging,
             prefix=".air-ferry-up-",
             suffix=".part",
             delete=False,
@@ -438,7 +466,7 @@ async def _handle_share(hub: Hub, client: RoomClient, meta: dict) -> None:
                 raise TransferError(f"unexpected control: {ctype}")
 
         sha = digest.hexdigest()
-        final = unique_destination(hub.dest_dir, filename)
+        final = unique_destination(staging, filename)
         assert tmp_path is not None
         tmp_path.replace(final)
         tmp_path = None
@@ -451,6 +479,7 @@ async def _handle_share(hub: Hub, client: RoomClient, meta: dict) -> None:
             path=final,
             from_id=client.id,
             from_label=client.label,
+            persisted=persist,
         )
         hub.remember_file(shared)
         await hub.send(websocket, {"type": "complete", "id": transfer_id, **shared.as_dict()})
@@ -464,4 +493,4 @@ async def _handle_share(hub: Hub, client: RoomClient, meta: dict) -> None:
         await hub.broadcast(err)
     finally:
         if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
+            _unlink_quiet(tmp_path)
