@@ -1,6 +1,6 @@
 # air-ferry
 
-Share files between your PC and phone. Web UI, system tray, WebSockets, Local network by default, optional cloudflare tunnel for when the router blocks device to device traffic.
+Share files between your PC (Linux/Windows) and phone. Web UI, system tray, WebSockets, Local network by default, optional cloudflare tunnel for when the router blocks device to device traffic.
 
 ![air-ferry web UI](docs/screenshot.png)
 
